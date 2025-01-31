@@ -1,4 +1,5 @@
-﻿using AutoMintCard;
+﻿using System.Net;
+using AutoMintCard;
 using AutoMintCard.CLI;
 using ClosedXML;
 using ClosedXML.Excel;
@@ -8,7 +9,8 @@ namespace AutoMintCard;
 
 class Program
 {
-    static HttpClient HttpClient = new HttpClient();
+    static HttpClient HttpClient;
+    static CookieContainer CookieContainer = new CookieContainer();
 
     static async Task Main(string[] args)
     {
@@ -16,8 +18,22 @@ class Program
         
         //var items = ReadSheet(options);
 
+        InitializeHttpClient();
+
         Credential credential;
         credential = await Login(options.Username, options.Password);
+        await TryCookie();
+        //await ClearAllCart();
+    }
+
+    private static void InitializeHttpClient()
+    {
+        var httpClientHandler = new HttpClientHandler()
+        {
+            UseCookies = true,
+            CookieContainer = CookieContainer,
+        };
+        HttpClient = new HttpClient(httpClientHandler);
     }
 
     private static List<Item> ReadSheet(Options options)
@@ -83,13 +99,22 @@ class Program
 
         });
         var loginResponse = await HttpClient.PostAsync(Constants.LoginUrl, form);
+        var zenidCookie = CookieContainer.GetCookies(new Uri(Constants.MtgMintCardUrl)).FirstOrDefault();
         
+        credential.Cookie = zenidCookie.Value;
+        credential.SecurityToken = securityToken;
         return credential;
     }
 
-    private static void ClearAllCart()
+    private static async Task TryCookie()
     {
-
+        var tryResponse = await HttpClient.GetAsync(Constants.TryCheckOrderUrl);
+        var mainPageHtml = await tryResponse.Content.ReadAsStringAsync();
+        
+    }
+    private static async Task ClearAllCart()
+    {
+        var clearCartResponse = await HttpClient.GetAsync(Constants.ClearAllCartUrl);
     }
 
     private static bool HasBuyer(string buyer)

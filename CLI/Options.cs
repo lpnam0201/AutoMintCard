@@ -13,7 +13,7 @@ namespace AutoMintCard.CLI
         [Option("LastRow", Required = true)]
         public int LastRow { get; set;}
 
-        [Option("UserName", Required = true)]
+        [Option("Username", Required = true)]
         public string Username { get; set;}
 
         [Option("Password", Required = true)]
