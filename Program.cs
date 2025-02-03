@@ -22,8 +22,14 @@ class Program
 
         Credential credential;
         credential = await Login(options.Username, options.Password);
-        await TryCookie();
         //await ClearAllCart();
+
+        var items = ReadSheet(options);
+        foreach (var item in items)
+        {
+            var productId = await GetAndParseProductId(item);
+            await AddToCart(productId, item);
+        }
     }
 
     private static void InitializeHttpClient()
@@ -105,16 +111,29 @@ class Program
         credential.SecurityToken = securityToken;
         return credential;
     }
-
-    private static async Task TryCookie()
-    {
-        var tryResponse = await HttpClient.GetAsync(Constants.TryCheckOrderUrl);
-        var mainPageHtml = await tryResponse.Content.ReadAsStringAsync();
-        
-    }
     private static async Task ClearAllCart()
     {
         var clearCartResponse = await HttpClient.GetAsync(Constants.ClearAllCartUrl);
+    }
+
+    private static async Task<string> GetAndParseProductId(Item item)
+    {
+        var getItemResponse = await HttpClient.GetAsync(item.Url);
+        var itemPageHtml = await getItemResponse.Content.ReadAsStringAsync();
+        var htmlDoc = new HtmlAgilityPack.HtmlDocument();
+        htmlDoc.LoadHtml(itemPageHtml);
+
+        var addWatchListLink = htmlDoc.DocumentNode
+            .SelectNodes("//a[contains(@onclick, 'AddWatchListGet')]")
+            .FirstOrDefault();
+        var idAttributeValue = addWatchListLink.GetAttributeValue("id", "");
+        return idAttributeValue.Split("-")[0];
+    }
+
+    private static async Task AddToCart(string productId, Item item)
+    {
+        var addToCartUrl = string.Format(Constants.AddToCartUrlTemplate, productId, item.Quantity);
+        await HttpClient.GetAsync(addToCartUrl);
     }
 
     private static bool HasBuyer(string buyer)
