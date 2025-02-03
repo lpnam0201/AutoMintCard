@@ -25,11 +25,40 @@ class Program
         //await ClearAllCart();
 
         var items = ReadSheet(options);
+        var itemsToOrder = await BuildItemToOrders(items);
+
+        
+
+        //await AddToCart(productId, item);
+    }
+
+    private static async Task<List<ItemToOrder>> BuildItemToOrders(List<Item> items)
+    {
+        var itemsToOrder = new List<ItemToOrder>();
         foreach (var item in items)
         {
             var productId = await GetAndParseProductId(item);
-            await AddToCart(productId, item);
+            itemsToOrder.Add(new ItemToOrder
+            {
+                ProductId = productId,
+                Quantity = item.Quantity
+            });
         }
+
+        return GroupDuplicateItems(itemsToOrder);
+    }
+
+    private static List<ItemToOrder> GroupDuplicateItems(List<ItemToOrder> itemToOrders)
+    {
+        return itemToOrders.GroupBy(x => x.ProductId)
+            .Select(g => {
+                return g.Aggregate((item1, item2) => new ItemToOrder
+                {
+                    ProductId = item1.ProductId,
+                    Quantity = item1.Quantity + item2.Quantity
+                });
+            })
+            .ToList();
     }
 
     private static void InitializeHttpClient()
