@@ -4,6 +4,8 @@ using AutoMintCard.CLI;
 using ClosedXML;
 using ClosedXML.Excel;
 using CommandLine;
+using DocumentFormat.OpenXml.Drawing;
+using HtmlAgilityPack;
 
 namespace AutoMintCard;
 
@@ -15,21 +17,30 @@ class Program
     static async Task Main(string[] args)
     {
         var options = Parser.Default.ParseArguments<Options>(args).Value;
-        
-        //var items = ReadSheet(options);
 
         InitializeHttpClient();
 
         Credential credential;
         credential = await Login(options.Username, options.Password);
-        //await ClearAllCart();
+        await ClearAllCart();
 
         var items = ReadSheet(options);
         var itemsToOrder = await BuildItemToOrders(items);
 
-        
+        await AddAllToCart(itemsToOrder);
+    }
 
-        //await AddToCart(productId, item);
+    private static async Task AddAllToCart(List<ItemToOrder> itemToOrders)
+    {
+        foreach (var itemToOrder in itemToOrders)
+        {
+            Console.WriteLine($"Product {itemToOrder.ProductId}: need {itemToOrder.Quantity}, {itemToOrder.InStockQuantity} in stock");
+            var quantity = itemToOrder.InStockQuantity < itemToOrder.Quantity
+                ? itemToOrder.InStockQuantity
+                : itemToOrder.Quantity;
+
+            await AddToCart(itemToOrder.ProductId, quantity);
+        }
     }
 
     private static async Task<List<ItemToOrder>> BuildItemToOrders(List<Item> items)
@@ -37,11 +48,13 @@ class Program
         var itemsToOrder = new List<ItemToOrder>();
         foreach (var item in items)
         {
-            var productId = await GetAndParseProductId(item);
+            var (productId, remainingQuantity, price) = await GetAndParseProductIdAndRelatedInfo(item);
             itemsToOrder.Add(new ItemToOrder
             {
                 ProductId = productId,
-                Quantity = item.Quantity
+                Quantity = item.Quantity,
+                InStockQuantity = remainingQuantity,
+                Price = price
             });
         }
 
@@ -55,7 +68,9 @@ class Program
                 return g.Aggregate((item1, item2) => new ItemToOrder
                 {
                     ProductId = item1.ProductId,
-                    Quantity = item1.Quantity + item2.Quantity
+                    InStockQuantity = item1.InStockQuantity,
+                    Price = item1.Price,
+                    Quantity = item1.Quantity + item2.Quantity,
                 });
             })
             .ToList();
@@ -138,15 +153,19 @@ class Program
         
         credential.Cookie = zenidCookie.Value;
         credential.SecurityToken = securityToken;
+        
+        Console.WriteLine("Login");
         return credential;
     }
     private static async Task ClearAllCart()
     {
         var clearCartResponse = await HttpClient.GetAsync(Constants.ClearAllCartUrl);
+        Console.WriteLine("Clear all cart");
     }
 
-    private static async Task<string> GetAndParseProductId(Item item)
+    private static async Task<(string, int, decimal)> GetAndParseProductIdAndRelatedInfo(Item item)
     {
+        Console.WriteLine($"Parsing url: {item.Url}");
         var getItemResponse = await HttpClient.GetAsync(item.Url);
         var itemPageHtml = await getItemResponse.Content.ReadAsStringAsync();
         var htmlDoc = new HtmlAgilityPack.HtmlDocument();
@@ -156,12 +175,41 @@ class Program
             .SelectNodes("//a[contains(@onclick, 'AddWatchListGet')]")
             .FirstOrDefault();
         var idAttributeValue = addWatchListLink.GetAttributeValue("id", "");
-        return idAttributeValue.Split("-")[0];
+        var productId = idAttributeValue.Split("-")[0];
+
+        var remainingQuantity = GetRemainingQuantity(htmlDoc, productId);
+        var price = GetPrice(htmlDoc);
+        return (productId, remainingQuantity, price);
     }
 
-    private static async Task AddToCart(string productId, Item item)
+    private static int GetRemainingQuantity(HtmlDocument htmlDoc, string productId)
     {
-        var addToCartUrl = string.Format(Constants.AddToCartUrlTemplate, productId, item.Quantity);
+        var outOfStockSpan = htmlDoc.DocumentNode
+            .SelectNodes("//span[contains(@class, 'label label-default') and text() = 'Out of Stock']")
+            ?.FirstOrDefault();
+        if (outOfStockSpan != null)
+        {
+            return 0;
+        }
+
+        var quantityButtonLis = htmlDoc.DocumentNode
+            .SelectNodes($"//li[contains(@class, 'ui-state-default') and contains(@value, '{productId}')]")
+            .ToList();
+        return quantityButtonLis.Select(x => int.Parse(x.InnerText)).Max();
+    }
+
+    private static decimal GetPrice(HtmlDocument htmlDoc)
+    {
+        // The very first span is the price
+        var priceSpan = htmlDoc.DocumentNode
+            .SelectNodes("//span[@itemprop='price']")
+            .FirstOrDefault();
+        return decimal.Parse(priceSpan.InnerText);
+    }
+
+    private static async Task AddToCart(string productId, int quantity)
+    {
+        var addToCartUrl = string.Format(Constants.AddToCartUrlTemplate, productId, quantity);
         await HttpClient.GetAsync(addToCartUrl);
     }
 
