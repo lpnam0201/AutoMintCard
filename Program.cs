@@ -34,7 +34,9 @@ class Program
     {
         foreach (var itemToOrder in itemToOrders)
         {
-            Console.WriteLine($"Product {itemToOrder.ProductId}: need {itemToOrder.Quantity}, {itemToOrder.InStockQuantity} in stock");
+            var isWarning = itemToOrder.InStockQuantity < itemToOrder.Quantity;
+            var warningText = isWarning ? $"! (url = {itemToOrder.Url})" : string.Empty;
+            Console.WriteLine($"Product {itemToOrder.ProductId}: need {itemToOrder.Quantity}, {itemToOrder.InStockQuantity} in stock {warningText}");
             var quantity = itemToOrder.InStockQuantity < itemToOrder.Quantity
                 ? itemToOrder.InStockQuantity
                 : itemToOrder.Quantity;
@@ -54,7 +56,8 @@ class Program
                 ProductId = productId,
                 Quantity = item.Quantity,
                 InStockQuantity = remainingQuantity,
-                Price = price
+                Price = price,
+                Url = item.Url
             });
         }
 
@@ -71,6 +74,7 @@ class Program
                     InStockQuantity = item1.InStockQuantity,
                     Price = item1.Price,
                     Quantity = item1.Quantity + item2.Quantity,
+                    Url = item1.Url
                 });
             })
             .ToList();

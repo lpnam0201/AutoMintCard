@@ -6,5 +6,6 @@ namespace AutoMintCard
         public decimal Price { get; set; }
         public int Quantity { get; set; }
         public int InStockQuantity { get; set; }
+        public string Url { get; set; }
     }
 }
